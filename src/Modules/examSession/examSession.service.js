@@ -48,34 +48,39 @@ export const startExam = async (req, res, next) => {
         return next(new Error("Exam has already closed", { cause: 403 }));
     }
 
-    // Check if there is an active (unfinished) attempt to resume
-    const activeAttempt = await ExamAttemptModel.findOne({ examID: examId, studentID, endTime: { $exists: false } });
-    if (activeAttempt) {
-        // Resume unfinished attempt
-        const targetExamId = exam.parentExamID || examId;
-        let questions = await QuestionModel.find({ examID: targetExamId }).select(
-            "title options typeQue difficulty cognitiveLevel"
-        );
-        if (exam.randomizeQuestions) {
-            questions = shuffleArray(questions);
-        }
-        return successResponse({
-            res,
-            statusCode: 200,
-            message: "Exam resumed successfully",
-            data: {
-                attemptId: activeAttempt._id,
-                startTime: activeAttempt.startTime,
-                exam: {
-                    title: exam.title,
-                    durationMinutes: exam.durationMinutes,
-                    numOfQuestion: exam.numOfQuestion,
-                    closingAt: exam.closingAt,
-                    subject: Array.isArray(exam.groupID) ? exam.groupID[0]?.subject : exam.groupID?.subject,
+    // If student created this exam for self-practice, reset any unfinished attempt to start fresh with a new timer
+    if (isCreator) {
+        await ExamAttemptModel.deleteMany({ examID: examId, studentID, endTime: { $exists: false } });
+    } else {
+        // Check if there is an active (unfinished) attempt to resume for assigned exam
+        const activeAttempt = await ExamAttemptModel.findOne({ examID: examId, studentID, endTime: { $exists: false } });
+        if (activeAttempt) {
+            // Resume unfinished attempt
+            const targetExamId = exam.parentExamID || examId;
+            let questions = await QuestionModel.find({ examID: targetExamId }).select(
+                "title options typeQue difficulty cognitiveLevel"
+            );
+            if (exam.randomizeQuestions) {
+                questions = shuffleArray(questions);
+            }
+            return successResponse({
+                res,
+                statusCode: 200,
+                message: "Exam resumed successfully",
+                data: {
+                    attemptId: activeAttempt._id,
+                    startTime: activeAttempt.startTime,
+                    exam: {
+                        title: exam.title,
+                        durationMinutes: exam.durationMinutes,
+                        numOfQuestion: exam.numOfQuestion,
+                        closingAt: exam.closingAt,
+                        subject: Array.isArray(exam.groupID) ? exam.groupID[0]?.subject : exam.groupID?.subject,
+                    },
+                    questions,
                 },
-                questions,
-            },
-        });
+            });
+        }
     }
 
     // No active attempt. Check if they already submitted this exam before
