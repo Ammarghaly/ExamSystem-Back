@@ -108,7 +108,7 @@ export default function registerChatSocket(io) {
         if (!lastSeen) {
           return;
         }
-        socket.to(groupId).emit(CHAT_EVENTS.SEEN, {
+        io.to(groupId).emit(CHAT_EVENTS.SEEN, {
           groupId,
           userId: socket.user._id,
           messageId,
