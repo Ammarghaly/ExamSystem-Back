@@ -8,12 +8,19 @@ export const mapMessage = (message) => ({
   createdAt: message.createdAt,
   updatedAt: message.updatedAt,
 
-  sender: {
-    id: message.senderId._id,
-    name: message.senderId.name,
-    role: message.senderId.role,
-    avatar: message.senderId.avatar,
-  },
+  sender: message.senderId && typeof message.senderId === 'object'
+    ? {
+        id: message.senderId._id || message.senderId.id,
+        name: message.senderId.name || "Member",
+        role: message.senderId.role || "Student",
+        avatar: message.senderId.avatar || "",
+      }
+    : {
+        id: message.senderId || "",
+        name: "Member",
+        role: "Student",
+        avatar: "",
+      },
 });
 
 export const mapMessages = (messages) => messages.map(mapMessage);

@@ -86,52 +86,60 @@ export const updateLastSeenService = async ({ groupId, userId, messageId }) => {
 };
 
 export const createMessage = async (req, res, next) => {
-  const { content, groupId } = req.body;
-  const senderId = req.user.id;
-  const senderType = req.user.role;
+  try {
+    const { content, groupId } = req.body;
+    const senderId = req.user._id || req.user.id;
+    const senderType = req.user.role;
 
-  await validateGroupAccess(groupId, senderId);
+    await validateGroupAccess(groupId, senderId);
 
-  const message = await createMessageService({
-    groupId,
-    content,
-    senderId,
-    senderType,
-  });
+    const message = await createMessageService({
+      groupId,
+      content,
+      senderId,
+      senderType,
+    });
 
-  return successResponse({
-    res,
-    statusCode: 201,
-    message: "Message created successfully",
-    data: message,
-  });
+    return successResponse({
+      res,
+      statusCode: 201,
+      message: "Message created successfully",
+      data: message,
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 export const getMessagesByGroupId = async (req, res, next) => {
-  const senderId = req.user.id;
-  const { groupId } = req.params;
+  try {
+    const senderId = req.user._id || req.user.id;
+    const { groupId } = req.params;
 
-  await validateGroupAccess(groupId, senderId);
+    await validateGroupAccess(groupId, senderId);
 
-  const page = Number(req.query.page) || 1;
-  const limit = Number(req.query.limit) || 20;
-  const skip = (page - 1) * limit;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-  const messages = await ContentModel.find({ groupId })
-    .select("-__v")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate({
-      path: "senderId",
-      select: "name role avatar",
-    })
-    .lean();
+    const messages = await ContentModel.find({ groupId })
+      .select("-__v")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate({
+        path: "senderId",
+        select: "name role avatar",
+      })
+      .lean();
 
-  return successResponse({
-    res,
-    statusCode: 200,
-    message: "Messages retrieved successfully",
-    data: mapMessages(messages),
-  });
+    return successResponse({
+      res,
+      statusCode: 200,
+      message: "Messages retrieved successfully",
+      data: mapMessages(messages),
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
