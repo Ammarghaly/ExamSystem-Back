@@ -4,6 +4,7 @@ import GroupModel from "../../DB/model/group.model.js";
 import { checkGroupMembership } from "../../Utlis/checkGroupMembership.js";
 import AppError from "../../Utlis/appError.js";
 import { mapMessage, mapMessages } from "./chat.mapper.js";
+import { moderateMessage } from "../moderation/moderation.service.js";
 
 export const validateGroupAccess = async (groupId, userId) => {
   const group = await GroupModel.findById(groupId);
@@ -85,6 +86,27 @@ export const updateLastSeenService = async ({ groupId, userId, messageId }) => {
   return null;
 };
 
+export const handleModerationDecision = (moderationResult) => {
+  const { decision, moderation } = moderationResult;
+
+  switch (decision) {
+    case "ALLOW":
+      break;
+
+    case "WARN":
+      // TODO:
+      // Save Incident Report
+      // Notify Teacher
+      break;
+
+    case "BLOCK":
+      throw new AppError(moderation.reason, 403);
+
+    default:
+      throw new AppError("Unable to moderate this message.", 500);
+  }
+};
+
 export const createMessage = async (req, res, next) => {
   try {
     const { content, groupId } = req.body;
@@ -92,6 +114,12 @@ export const createMessage = async (req, res, next) => {
     const senderType = req.user.role;
 
     await validateGroupAccess(groupId, senderId);
+
+    const moderationResult = await moderateMessage({
+      message: content,
+    });
+
+    handleModerationDecision(moderationResult);
 
     const message = await createMessageService({
       groupId,
