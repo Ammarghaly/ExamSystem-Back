@@ -43,6 +43,25 @@ const GroupSchema = new Schema(
         ref: "User",
       },
     ],
+
+    lastSeen: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        messageId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Content",
+          required: true,
+        },
+        seenAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

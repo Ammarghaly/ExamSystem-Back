@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Socket Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; }
+        .container { max-width: 650px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { display: block; width: 100%; margin: 10px 0; padding: 10px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        button:hover:not(:disabled) { background-color: #0056b3; }
+        .btn-danger { background-color: #dc3545; }
+        .btn-danger:hover:not(:disabled) { background-color: #bd2130; }
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover:not(:disabled) { background-color: #218838; }
+        .btn-warning { background-color: #ffc107; color: #212529; }
+        .btn-warning:hover:not(:disabled) { background-color: #e0a800; }
+        .button-group { display: flex; gap: 10px; }
+        .button-group button { flex: 1; }
+        #logs { background: #222; color: #0f0; padding: 10px; height: 320px; overflow-y: scroll; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; white-space: pre-wrap; }
+        p { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Test Chat Socket</h2>
+        <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="Server URL">
+        <input type="text" id="token" placeholder="JWT Token (Without Bearer)">
+        
+        <div class="button-group">
+            <button id="connectBtn">Connect</button>
+            <button id="disconnectBtn" class="btn-danger" disabled>Disconnect</button>
+        </div>
+
+        <hr>
+
+        <input type="text" id="groupId" placeholder="Group ID">
+        <div class="button-group">
+            <button id="joinBtn" disabled>Join Group (chat:join)</button>
+            <button id="leaveBtn" class="btn-warning" disabled>Leave Group (chat:leave)</button>
+        </div>
+
+        <hr>
+
+        <input type="text" id="message" placeholder="Message content">
+        <button id="sendBtn" disabled>Send Message (chat:send)</button>
+
+        <hr>
+
+        <button id="scenarioBtn" class="btn-success" disabled>▶️ Run Test Scenario (Join ➔ Send ➔ Leave ➔ Send)</button>
+
+        <hr>
+
+        <h3>Logs</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const leaveBtn = document.getElementById('leaveBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const scenarioBtn = document.getElementById('scenarioBtn');
+        const logsDiv = document.getElementById('logs');
+
+        let socket = null;
+
+        function log(message) {
+            const p = document.createElement('p');
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsDiv.appendChild(p);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        connectBtn.onclick = () => {
+            const url = document.getElementById('serverUrl').value;
+            let token = document.getElementById('token').value;
+            
+            if (token.startsWith('Bearer ')) {
+                token = token.split(' ')[1];
+            }
+
+            log('Connecting to ' + url + '...');
+
+            socket = io(url, {
+                auth: {
+                    token: token
+                }
+            });
+
+            socket.on('connect', () => {
+                log('Connected! Socket ID: ' + socket.id);
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                joinBtn.disabled = false;
+                leaveBtn.disabled = false;
+                sendBtn.disabled = false;
+                scenarioBtn.disabled = false;
+            });
+
+            socket.on('disconnect', () => {
+                log('Disconnected from server');
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                joinBtn.disabled = true;
+                leaveBtn.disabled = true;
+                sendBtn.disabled = true;
+                scenarioBtn.disabled = true;
+            });
+
+            socket.on('connect_error', (err) => {
+                log('Connection Error: ' + err.message);
+                socket.disconnect();
+            });
+
+            socket.on('chat:receive', (data) => {
+                log('📩 Received Message (chat:receive): ' + JSON.stringify(data, null, 2));
+            });
+
+            socket.on('chat:error', (err) => {
+                log('⚠️ Error Event (chat:error): ' + JSON.stringify(err, null, 2));
+            });
+        };
+
+        disconnectBtn.onclick = () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        };
+
+        joinBtn.onclick = () => {
+            const groupId = document.getElementById('groupId').value;
+            if (!groupId) return alert('Enter Group ID');
+            
+            log('Joining group: ' + groupId);
+            socket.emit('chat:join', { groupId }, (response) => {
+                log('✅ Join Response: ' + JSON.stringify(response));
+            });
+        };
+
+        leaveBtn.onclick = () => {
+            const groupId = document.getElementById('groupId').value;
+            if (!groupId) return alert('Enter Group ID');
+            
+            log('Leaving group: ' + groupId);
+            socket.emit('chat:leave', { groupId }, (response) => {
+                log('🚪 Leave Response: ' + JSON.stringify(response));
+            });
+        };
+
+        sendBtn.onclick = () => {
+            const groupId = document.getElementById('groupId').value;
+            const content = document.getElementById('message').value || 'Test message';
+            
+            if (!groupId) return alert('Enter Group ID');
+
+            log('Sending message to group: ' + groupId + ' ("' + content + '")');
+            socket.emit('chat:send', { groupId, content }, (response) => {
+                log('✅ Send Response: ' + JSON.stringify(response));
+            });
+        };
+
+        // Automated Test Scenario: Join -> Send -> Leave -> Send
+        scenarioBtn.onclick = async () => {
+            const groupId = document.getElementById('groupId').value;
+            if (!groupId) return alert('Enter Group ID before running scenario');
+
+            log('🚀 --- STARTING TEST SCENARIO ---');
+
+            // Step 1: Join
+            log('Step 1: Executing Join...');
+            socket.emit('chat:join', { groupId }, async (response) => {
+                log('Step 1 Ack (Join): ' + JSON.stringify(response));
+                
+                await new Promise(r => setTimeout(r, 1000));
+
+                // Step 2: Send Message 1
+                log('Step 2: Sending Message 1 (while joined)...');
+                socket.emit('chat:send', { groupId, content: 'Message 1: Before leaving group' }, async (response) => {
+                    log('Step 2 Ack (Send 1): ' + JSON.stringify(response));
+
+                    await new Promise(r => setTimeout(r, 1000));
+
+                    // Step 3: Leave
+                    log('Step 3: Executing Leave...');
+                    socket.emit('chat:leave', { groupId }, async (response) => {
+                        log('Step 3 Ack (Leave): ' + JSON.stringify(response));
+
+                        await new Promise(r => setTimeout(r, 1000));
+
+                        // Step 4: Send Message 2 after leaving
+                        log('Step 4: Sending Message 2 (after leaving group)...');
+                        socket.emit('chat:send', { groupId, content: 'Message 2: After leaving group' }, (response) => {
+                            log('Step 4 Ack (Send 2): ' + JSON.stringify(response));
+                            log('🏁 --- SCENARIO COMPLETED ---');
+                        });
+                    });
+                });
+            });
+        };
+    </script>
+</body>
+</html>
+
