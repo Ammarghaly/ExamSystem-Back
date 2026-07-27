@@ -14,6 +14,7 @@ import studentDashboardRouter from "./Modules/studentDashboard/studentDashboard.
 import paymentWebhook from "./Modules/payment/payment.webhook.js"
 import paymentRouter from "./Modules/payment/payment.controller.js"
 import chatRouter from "./Modules/chat/chat.controller.js"
+import moderationRouter from "./Modules/moderation/moderation.controller.js"
 import cors from "cors"
 
 
@@ -55,6 +56,7 @@ const bootStrap = async (app, express) => {
     app.use("/api/student-dashboard", studentDashboardRouter)
     app.use("/api/payments", paymentRouter)
     app.use("/api/chat", chatRouter)
+    app.use("/api/moderation", moderationRouter)
 
     app.get("/", (req, res) => {
         return res.status(200).json({

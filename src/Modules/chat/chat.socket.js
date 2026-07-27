@@ -6,6 +6,10 @@ import {
   updateLastSeenService,
 } from "./chat.service.js";
 import socketAsyncHandler from "../socket/socketAsyncHandler.js";
+import {
+  handleModerationDecision,
+  moderateMessage,
+} from "../moderation/moderation.service.js";
 
 const typingTimers = new Map();
 
@@ -32,6 +36,18 @@ export default function registerChatSocket(io) {
       socketAsyncHandler(socket, async (data, callback) => {
         const { groupId, content } = data;
         await validateGroupAccess(groupId, socket.user._id);
+
+        const moderationResult = await moderateMessage({
+          message: content,
+        });
+
+        await handleModerationDecision({
+          moderationResult,
+          senderId: socket.user._id,
+          groupId,
+          message: content,
+        });
+
         const message = await createMessageService({
           groupId,
           content,

@@ -42,7 +42,7 @@ const model = new ChatGroq({
 });
 const moderationModel = model.withStructuredOutput(ModerationSchema);
 
-export const checkMessage = async ({ message, senderId, groupId }) => {
+export const checkMessage = async ({ message }) => {
   try {
     const response = await moderationModel.invoke([
       {

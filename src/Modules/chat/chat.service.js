@@ -4,7 +4,10 @@ import GroupModel from "../../DB/model/group.model.js";
 import { checkGroupMembership } from "../../Utlis/checkGroupMembership.js";
 import AppError from "../../Utlis/appError.js";
 import { mapMessage, mapMessages } from "./chat.mapper.js";
-import { moderateMessage } from "../moderation/moderation.service.js";
+import {
+  handleModerationDecision,
+  moderateMessage,
+} from "../moderation/moderation.service.js";
 
 export const validateGroupAccess = async (groupId, userId) => {
   const group = await GroupModel.findById(groupId);
@@ -80,31 +83,10 @@ export const updateLastSeenService = async ({ groupId, userId, messageId }) => {
   if (!oldMessage) {
     return updateLastSeen();
   }
-  if (currentMessage.createdAt > oldMessage.createdAt) {
+  if (currentMessage.createdAt >= oldMessage.createdAt) {
     return updateLastSeen();
   }
-  return null;
-};
-
-export const handleModerationDecision = (moderationResult) => {
-  const { decision, moderation } = moderationResult;
-
-  switch (decision) {
-    case "ALLOW":
-      break;
-
-    case "WARN":
-      // TODO:
-      // Save Incident Report
-      // Notify Teacher
-      break;
-
-    case "BLOCK":
-      throw new AppError(moderation.reason, 403);
-
-    default:
-      throw new AppError("Unable to moderate this message.", 500);
-  }
+  return group.lastSeen[index];
 };
 
 export const createMessage = async (req, res, next) => {
@@ -119,7 +101,12 @@ export const createMessage = async (req, res, next) => {
       message: content,
     });
 
-    handleModerationDecision(moderationResult);
+    await handleModerationDecision({
+      moderationResult,
+      senderId,
+      groupId,
+      message: content,
+    });
 
     const message = await createMessageService({
       groupId,
@@ -144,7 +131,7 @@ export const getMessagesByGroupId = async (req, res, next) => {
     const senderId = req.user._id || req.user.id;
     const { groupId } = req.params;
 
-    await validateGroupAccess(groupId, senderId);
+    const group = await validateGroupAccess(groupId, senderId);
 
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
@@ -161,11 +148,39 @@ export const getMessagesByGroupId = async (req, res, next) => {
       })
       .lean();
 
+    const otherLastSeen = (group.lastSeen || []).filter(
+      (item) => item.userId.toString() !== senderId.toString(),
+    );
+
+    let latestOtherSeenDate = null;
+    if (otherLastSeen.length > 0) {
+      const lastSeenMsgIds = otherLastSeen.map((item) => item.messageId);
+      const lastSeenMsgs = await ContentModel.find({
+        _id: { $in: lastSeenMsgIds },
+      }).select("createdAt");
+
+      if (lastSeenMsgs.length > 0) {
+        latestOtherSeenDate = new Date(
+          Math.max(...lastSeenMsgs.map((m) => new Date(m.createdAt).getTime())),
+        );
+      }
+    }
+
+    const mapped = mapMessages(messages).map((msg) => {
+      const msgDate = new Date(msg.createdAt);
+      const isSeen =
+        latestOtherSeenDate && msgDate <= latestOtherSeenDate;
+      return {
+        ...msg,
+        isSeen: Boolean(isSeen),
+      };
+    });
+
     return successResponse({
       res,
       statusCode: 200,
       message: "Messages retrieved successfully",
-      data: mapMessages(messages),
+      data: mapped,
     });
   } catch (err) {
     return next(err);
