@@ -1,143 +1,279 @@
-import express from 'express';
-import Stripe from 'stripe';
-import UserModel from '../../DB/model/user.model.js';
-import { sendInvoiceEmail } from '../../Utlis/sendEmail.js';
+import express from "express";
+import Stripe from "stripe";
+import UserModel from "../../DB/model/user.model.js";
+import { sendInvoiceEmail } from "../../Utlis/sendEmail.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const router = express.Router();
 
-router.post('/', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error(`❌ Webhook Signature Error: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  if (event.type === 'invoice.paid') {
-    const invoice = event.data.object;
-    const customerId = invoice.customer;
-    const subscriptionId = invoice.subscription;
-    const priceId = invoice.lines.data[0]?.price?.id;
+router.post(
+  "/",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
 
     try {
-      const user = await UserModel.findOne({ stripe_customer_id: customerId });
-      if (user) {
-        let planLabel = "Student Plan";
-        
-        if (priceId === process.env.STRIPE_STUDENT_LITE_PRICE_ID) {
-          const creditsToAdd = 150;
-          if (user.subscription_type === 'free') {
-            user.subscription_credits = (user.subscription_credits || 0) + creditsToAdd;
-          } else {
-            // Switch to Lite or renew Lite: reset expiring credits to 150 (they do not roll over to permanent pool)
-            user.subscription_credits = creditsToAdd;
-          }
-          user.subscription_type = 'lite';
-          user.stripe_subscription_id = subscriptionId;
-          user.grace_period_ends_at = null;
-          planLabel = "Student Lite Subscription";
-        } 
-        
-        else if (priceId === process.env.STRIPE_STUDENT_PREMIUM_PRICE_ID) {
-          const creditsToAdd = 500;
-          user.purchased_credits = (user.purchased_credits || 0) + creditsToAdd;
-          
-          if (user.subscription_type === 'premium') {
-            // On renewal of Premium, ensure expiring subscription_credits is 0
-            user.subscription_credits = 0;
-          }
-          // On switch from Lite to Premium, user.subscription_credits is left as is so the leftovers can still be used until they expire.
-
-          user.subscription_type = 'premium';
-          user.stripe_subscription_id = subscriptionId;
-          user.grace_period_ends_at = null;
-          planLabel = "Student Premium Subscription";
-        }
-        
-        else if (priceId === process.env.STRIPE_TEACHER_BASIC_PRICE_ID) {
-          const creditsToAdd = 1000;
-          user.purchased_credits = (user.purchased_credits || 0) + creditsToAdd;
-          user.subscription_type = 'premium';
-          user.stripe_subscription_id = subscriptionId;
-          user.grace_period_ends_at = null;
-          planLabel = "Teacher Premium Subscription";
-        }
-
-        else if (priceId === process.env.STRIPE_TEACHER_PREMIUM_PRICE_ID) {
-          const creditsToAdd = 10000;
-          user.purchased_credits = (user.purchased_credits || 0) + creditsToAdd;
-          user.subscription_type = 'institution';
-          user.stripe_subscription_id = subscriptionId;
-          user.grace_period_ends_at = null;
-          planLabel = "Teacher Institutional Subscription";
-        }
-
-        await user.save();
-        const invoiceUrl = invoice.invoice_pdf || invoice.hosted_invoice_url || "https://stripe.com";
-        const amountPaid = (invoice.amount_paid / 100).toFixed(2);
-        await sendInvoiceEmail(user.email, invoiceUrl, planLabel, amountPaid);
-      }
-    } catch (dbErr) {
-      console.error(`❌ Database Error during subscription handling: ${dbErr.message}`);
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET,
+      );
+    } catch (err) {
+      console.error(`❌ Webhook Signature Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
     }
-  }
 
-  if (event.type === 'invoice.payment_failed') {
-    const invoice = event.data.object;
-    const customerId = invoice.customer;
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+      const subscriptionId = invoice.subscription;
+      const priceId = invoice.lines.data[0]?.price?.id;
 
-    try {
-      const user = await UserModel.findOne({ stripe_customer_id: customerId });
-      if (user) {
-        user.grace_period_ends_at = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        await user.save();
-      }
-    } catch (dbErr) {
-      console.error(`❌ Database Error during payment failure handling: ${dbErr.message}`);
-    }
-  }
-
-  if (event.type === 'payment_intent.succeeded') {
-    const paymentIntent = event.data.object;
-    const { userId, type, creditsToAdd, planName } = paymentIntent.metadata;
-
-    if (userId && creditsToAdd) {
       try {
-        const user = await UserModel.findById(userId);
+        const user = await UserModel.findOne({
+          stripe_customer_id: customerId,
+        });
         if (user) {
-          const credits = parseInt(creditsToAdd, 10);
+          let planLabel = "Student Plan";
 
-          if (user.role === 'Teacher') {
-            user.purchased_credits += credits;
-            if (type === 'teacher_plan') {
-              user.subscription_type = planName;
+          if (priceId === process.env.STRIPE_STUDENT_LITE_PRICE_ID) {
+            const creditsToAdd = 150;
+            if (user.subscription_type === "free") {
+              user.subscription_credits =
+                (user.subscription_credits || 0) + creditsToAdd;
+            } else {
+              // Switch to Lite or renew Lite: reset expiring credits to 150 (they do not roll over to permanent pool)
+              user.subscription_credits = creditsToAdd;
             }
-          } else if (user.role === 'Student' && type === 'addon_credits') {
-            user.purchased_credits += credits;
+            user.subscription_type = "lite";
+            user.stripe_subscription_id = subscriptionId;
+            user.grace_period_ends_at = null;
+            planLabel = "Student Lite Subscription";
+          } else if (priceId === process.env.STRIPE_STUDENT_PREMIUM_PRICE_ID) {
+            const creditsToAdd = 500;
+            user.purchased_credits =
+              (user.purchased_credits || 0) + creditsToAdd;
+
+            if (user.subscription_type === "premium") {
+              // On renewal of Premium, ensure expiring subscription_credits is 0
+              user.subscription_credits = 0;
+            }
+            // On switch from Lite to Premium, user.subscription_credits is left as is so the leftovers can still be used until they expire.
+
+            user.subscription_type = "premium";
+            user.stripe_subscription_id = subscriptionId;
+            user.grace_period_ends_at = null;
+            planLabel = "Student Premium Subscription";
+          } else if (priceId === process.env.STRIPE_TEACHER_BASIC_PRICE_ID) {
+            const creditsToAdd = 1000;
+            user.purchased_credits =
+              (user.purchased_credits || 0) + creditsToAdd;
+            user.subscription_type = "premium";
+            user.stripe_subscription_id = subscriptionId;
+            user.grace_period_ends_at = null;
+            planLabel = "Teacher Premium Subscription";
+          } else if (priceId === process.env.STRIPE_TEACHER_PREMIUM_PRICE_ID) {
+            const creditsToAdd = 10000;
+            planLabel = "Teacher Institutional Subscription";
+
+            if (user.role === "INSTITUTION_ADMIN" && user.organizationId) {
+              const OrganizationModel = (
+                await import("../../DB/model/organization.model.js")
+              ).default;
+              const org = await OrganizationModel.findById(user.organizationId);
+              if (org) {
+                org.totalCredits += creditsToAdd;
+                org.status = "active";
+                org.subscription_expires_at = new Date(
+                  Date.now() + 30 * 24 * 60 * 60 * 1000,
+                );
+                org.stripe_subscription_id = subscriptionId;
+                await org.save();
+
+                await UserModel.updateMany(
+                  {
+                    organizationId: org._id,
+                    role: "INSTITUTION_MEMBER",
+                    _disabledBySystem: true,
+                  },
+                  { isActive: true, _disabledBySystem: false },
+                );
+              }
+            } else {
+              const OrganizationModel = (
+                await import("../../DB/model/organization.model.js")
+              ).default;
+
+              const org = await OrganizationModel.create({
+                name: `${user.name}'s Organization`,
+                ownerId: user._id,
+                domain: user.email.split("@")[0],
+                totalCredits: creditsToAdd,
+                usedCredits: 0,
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscriptionId,
+              });
+
+              user.role = "INSTITUTION_ADMIN";
+              user.organizationId = org._id;
+              user.subscription_type = "institution";
+
+              if (user.purchased_credits > 0 || user.subscription_credits > 0) {
+                org.totalCredits +=
+                  (user.purchased_credits || 0) +
+                  (user.subscription_credits || 0);
+                await org.save();
+                user.purchased_credits = 0;
+                user.subscription_credits = 0;
+              }
+            }
+
+            user.stripe_subscription_id = subscriptionId;
+            user.grace_period_ends_at = null;
           }
 
           await user.save();
-
-          // Send Invoice / Receipt Email
-          const receiptUrl = paymentIntent.charges?.data?.[0]?.receipt_url || "https://stripe.com";
-          const amountPaid = (paymentIntent.amount / 100).toFixed(2);
-          const productName = type === 'teacher_plan' 
-            ? `Teacher ${planName.charAt(0).toUpperCase() + planName.slice(1)} Plan` 
-            : `${credits} Credits Add-on`;
-
-          await sendInvoiceEmail(user.email, receiptUrl, productName, amountPaid);
+          const invoiceUrl =
+            invoice.invoice_pdf ||
+            invoice.hosted_invoice_url ||
+            "https://stripe.com";
+          const amountPaid = (invoice.amount_paid / 100).toFixed(2);
+          await sendInvoiceEmail(user.email, invoiceUrl, planLabel, amountPaid);
         }
       } catch (dbErr) {
-        console.error(`❌ Database Error during one-time credit top-up: ${dbErr.message}`);
+        console.error(
+          `❌ Database Error during subscription handling: ${dbErr.message}`,
+        );
       }
     }
-  }
 
-  res.status(200).json({ received: true });
-});
+    if (event.type === "invoice.payment_failed") {
+      const invoice = event.data.object;
+      const customerId = invoice.customer;
+
+      try {
+        const user = await UserModel.findOne({
+          stripe_customer_id: customerId,
+        });
+        if (user) {
+          user.grace_period_ends_at = new Date(
+            Date.now() + 3 * 24 * 60 * 60 * 1000,
+          );
+          await user.save();
+
+          if (user.role === "INSTITUTION_ADMIN" && user.organizationId) {
+            const OrganizationModel = (
+              await import("../../DB/model/organization.model.js")
+            ).default;
+            const org = await OrganizationModel.findById(user.organizationId);
+            if (org) {
+              org.status = "grace_period";
+              org.grace_period_ends_at = user.grace_period_ends_at;
+              await org.save();
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.error(
+          `❌ Database Error during payment failure handling: ${dbErr.message}`,
+        );
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+
+      try {
+        const user = await UserModel.findOne({
+          stripe_customer_id: customerId,
+        });
+        if (user) {
+          if (user.role === "INSTITUTION_ADMIN" && user.organizationId) {
+            const OrganizationModel = (
+              await import("../../DB/model/organization.model.js")
+            ).default;
+            const org = await OrganizationModel.findById(user.organizationId);
+            if (org) {
+              org.status = "expired";
+              org.expiredAt = new Date();
+              await org.save();
+
+              await UserModel.updateMany(
+                { organizationId: org._id, role: "INSTITUTION_MEMBER" },
+                {
+                  isActive: false,
+                  _disabledBySystem: true,
+                  _disabledReason: "subscription_expired",
+                },
+              );
+
+              user.grace_period_ends_at = null;
+              user.stripe_subscription_id = null;
+              await user.save();
+            }
+          } else {
+            user.subscription_type = "free";
+            user.stripe_subscription_id = null;
+            user.subscription_credits = 0;
+            user.grace_period_ends_at = null;
+            await user.save();
+          }
+        }
+      } catch (dbErr) {
+        console.error(`❌ Subscription deletion error: ${dbErr.message}`);
+      }
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+      const { userId, type, creditsToAdd, planName } = paymentIntent.metadata;
+
+      if (userId && creditsToAdd) {
+        try {
+          const user = await UserModel.findById(userId);
+          if (user) {
+            const credits = parseInt(creditsToAdd, 10);
+
+            if (user.role === "Teacher") {
+              user.purchased_credits += credits;
+              if (type === "teacher_plan") {
+                user.subscription_type = planName;
+              }
+            } else if (user.role === "Student" && type === "addon_credits") {
+              user.purchased_credits += credits;
+            }
+
+            await user.save();
+
+            // Send Invoice / Receipt Email
+            const receiptUrl =
+              paymentIntent.charges?.data?.[0]?.receipt_url ||
+              "https://stripe.com";
+            const amountPaid = (paymentIntent.amount / 100).toFixed(2);
+            const productName =
+              type === "teacher_plan"
+                ? `Teacher ${planName.charAt(0).toUpperCase() + planName.slice(1)} Plan`
+                : `${credits} Credits Add-on`;
+
+            await sendInvoiceEmail(
+              user.email,
+              receiptUrl,
+              productName,
+              amountPaid,
+            );
+          }
+        } catch (dbErr) {
+          console.error(
+            `❌ Database Error during one-time credit top-up: ${dbErr.message}`,
+          );
+        }
+      }
+    }
+
+    res.status(200).json({ received: true });
+  },
+);
 
 export default router;

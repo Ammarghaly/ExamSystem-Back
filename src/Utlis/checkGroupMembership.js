@@ -1,9 +1,28 @@
-export const checkGroupMembership = (group, userId) => {
-  const isStudent = group.students.some(
-    (student) => student.toString() === userId.toString(),
-  );
+export const checkGroupMembership = (group, user) => {
+  if (!user || !group) return false;
 
-  const isTeacher = group.teacher && (group.teacher._id || group.teacher).toString() === userId.toString();
+  const userId = user._id || user.id || user;
+  const userRole = user.role;
 
-  return isStudent || isTeacher;
+  if (
+    userRole === "INSTITUTION_ADMIN" &&
+    user.organizationId &&
+    group.organizationId &&
+    (user.organizationId._id || user.organizationId).toString() ===
+      (group.organizationId._id || group.organizationId).toString()
+  ) {
+    return true;
+  }
+
+  const isStudent =
+    group.students &&
+    group.students.some(
+      (student) => (student._id || student).toString() === userId.toString(),
+    );
+
+  const isTeacher =
+    group.teacher &&
+    (group.teacher._id || group.teacher).toString() === userId.toString();
+
+  return Boolean(isStudent || isTeacher);
 };

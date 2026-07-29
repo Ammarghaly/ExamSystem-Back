@@ -1,6 +1,6 @@
 import multer from "multer";
 
 export const fileUpload = () => {
-    const storage = multer.memoryStorage(); // تخزين مؤقت في الذاكرة
-    return multer({ storage });
+  const storage = multer.memoryStorage();
+  return multer({ storage });
 };

@@ -4,14 +4,35 @@ const UserSchema = new Schema(
   {
     role: {
       type: String,
-      enum: ["Student", "Teacher"],
+      enum: ["Student", "Teacher", "INSTITUTION_ADMIN", "INSTITUTION_MEMBER"],
       required: true,
     },
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+    },
+    customUsername: {
+      type: String,
+      default: null,
+      sparse: true,
+      unique: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     name: {
       type: String,
       required: [true, "Name is required"],
       minlength: [3, "Name must be at least 3 characters long"],
-      maxlength: [20, "Name must be at most 20 characters long"],
+      maxlength: [50, "Name must be at most 50 characters long"],
     },
     email: {
       type: String,
@@ -29,21 +50,22 @@ const UserSchema = new Schema(
     educational_level: String, // students
     avatar: {
       type: String,
-      default: "https://res.cloudinary.com/dgjw80t8x/image/upload/q_auto/f_auto/v1780575623/mostafamagdy_hsjbw3.png" ,
+      default:
+        "https://res.cloudinary.com/dgjw80t8x/image/upload/q_auto/f_auto/v1780575623/mostafamagdy_hsjbw3.png",
     },
 
-     stripe_customer_id: {
-  type: String,
-  default: null, 
-},
-stripe_subscription_id: {
-  type: String,
-  default: null, 
-},
-grace_period_ends_at: {
-  type: Date,
-  default: null,
-},
+    stripe_customer_id: {
+      type: String,
+      default: null,
+    },
+    stripe_subscription_id: {
+      type: String,
+      default: null,
+    },
+    grace_period_ends_at: {
+      type: Date,
+      default: null,
+    },
 
     otp: {
       code: {
@@ -69,13 +91,16 @@ grace_period_ends_at: {
     },
     subscription_type: {
       type: String,
-      enum: ["free","lite", "premium", "institution"],
+      enum: ["free", "lite", "premium", "institution"],
       default: "free",
     },
     available_credits: {
       type: Number,
       default: function () {
-        return this.role === "Teacher" ? 50 : 30;
+        if (this.role === "INSTITUTION_MEMBER") return 0;
+        return this.role === "Teacher" || this.role === "INSTITUTION_ADMIN"
+          ? 50
+          : 30;
       },
     },
     subscription_credits: {
@@ -104,7 +129,8 @@ grace_period_ends_at: {
 
 UserSchema.pre("save", function () {
   if (this.isModified("available_credits")) {
-    const oldTotal = (this.subscription_credits || 0) + (this.purchased_credits || 0);
+    const oldTotal =
+      (this.subscription_credits || 0) + (this.purchased_credits || 0);
     const newTotal = this.available_credits;
     const difference = oldTotal - newTotal;
 
@@ -129,7 +155,8 @@ UserSchema.pre("save", function () {
     }
   }
 
-  this.available_credits = (this.subscription_credits || 0) + (this.purchased_credits || 0);
+  this.available_credits =
+    (this.subscription_credits || 0) + (this.purchased_credits || 0);
 });
 
 const UserModel = mongoose.models.User || mongoose.model("User", UserSchema);

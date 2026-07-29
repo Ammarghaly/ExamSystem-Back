@@ -14,6 +14,12 @@ const moderationSchema = new Schema(
       required: true,
     },
 
+    organizationId: {
+      type: Types.ObjectId,
+      ref: "Organization",
+      default: null,
+    },
+
     message: {
       type: String,
       required: true,

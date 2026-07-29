@@ -131,7 +131,7 @@ export const getMessagesByGroupId = async (req, res, next) => {
     const senderId = req.user._id || req.user.id;
     const { groupId } = req.params;
 
-    const group = await validateGroupAccess(groupId, senderId);
+    const group = await validateGroupAccess(groupId, req.user);
 
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;

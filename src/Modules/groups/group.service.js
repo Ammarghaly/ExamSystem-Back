@@ -26,6 +26,7 @@ export const createGroup = async (req, res, next) => {
     subject,
     accessCode,
     teacher,
+    organizationId: req.user.organizationId || null,
   });
 
   return successResponse({
@@ -140,7 +141,6 @@ export const teacherAcceptRejectRequest = async (req, res, next) => {
     group.pendingStudents = group.pendingStudents.filter(
       (id) => id.toString() !== requestId.toString(),
     );
-  
   } else {
     group.rejectedStudents.push(requestId);
     group.pendingStudents = group.pendingStudents.filter(
@@ -155,9 +155,9 @@ export const teacherAcceptRejectRequest = async (req, res, next) => {
   });
 };
 
-export  const acceptrejectedStudents = async (req, res, next) => {
-  const {requestId, groupId} = req.body;
-  const query = {rejectedStudents:requestId};
+export const acceptrejectedStudents = async (req, res, next) => {
+  const { requestId, groupId } = req.body;
+  const query = { rejectedStudents: requestId };
   if (groupId) {
     query._id = groupId;
   }
@@ -177,8 +177,8 @@ export  const acceptrejectedStudents = async (req, res, next) => {
   });
 };
 
-export const  addStudentToGroup = async (req, res, next) => {
-  const {groupId,requestId} = req.body;
+export const addStudentToGroup = async (req, res, next) => {
+  const { groupId, requestId } = req.body;
   const group = await Group.findById(groupId);
   if (!group) {
     return next(new Error("Group Not Found"));
@@ -187,10 +187,14 @@ export const  addStudentToGroup = async (req, res, next) => {
     return next(new Error("Student Is Already A Member In This Group"));
   }
   if (group.pendingStudents.includes(requestId)) {
-    group.pendingStudents = group.pendingStudents.filter((id) => id.toString() !== requestId.toString());
+    group.pendingStudents = group.pendingStudents.filter(
+      (id) => id.toString() !== requestId.toString(),
+    );
   }
   if (group.rejectedStudents.includes(requestId)) {
-    group.rejectedStudents = group.rejectedStudents.filter((id) => id.toString() !== requestId.toString());
+    group.rejectedStudents = group.rejectedStudents.filter(
+      (id) => id.toString() !== requestId.toString(),
+    );
   }
   group.students.push(requestId);
   await group.save();
@@ -211,15 +215,13 @@ export const getMyGroups = async (req, res, next) => {
   } else {
     groups = await Group.find({ teacher: userId });
   }
-  
+
   return successResponse({
     res,
     message: "Groups fetched successfully",
     data: groups,
   });
 };
-
-
 
 export const getGroupDetails = async (req, res, next) => {
   try {
@@ -247,7 +249,7 @@ export const getGroupDetails = async (req, res, next) => {
       });
 
       const pendingExamsCount = exams.filter(
-        (exam) => exam.closingAt > nowInSeconds
+        (exam) => exam.closingAt > nowInSeconds,
       ).length;
 
       const completedAttempts = await ExamAttemptModel.find({
@@ -258,7 +260,8 @@ export const getGroupDetails = async (req, res, next) => {
 
       const completedExamAttemptsMap = {};
       completedAttempts.forEach((attempt) => {
-        completedExamAttemptsMap[attempt.examID.toString()] = attempt._id.toString();
+        completedExamAttemptsMap[attempt.examID.toString()] =
+          attempt._id.toString();
       });
 
       const assignedExams = exams.map((exam) => {
@@ -276,12 +279,22 @@ export const getGroupDetails = async (req, res, next) => {
         return {
           id: exam._id,
           title: exam.title,
-          dueDate: new Date(exam.closingAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-          status: exam.status === "Closed" || isExpired ? "Closed" : (isCompleted ? "Completed" : "Active"),
+          dueDate: new Date(exam.closingAt * 1000).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          status:
+            exam.status === "Closed" || isExpired
+              ? "Closed"
+              : isCompleted
+                ? "Completed"
+                : "Active",
           dueLabel,
           isCompleted,
           attemptId,
-          isAvailable: exam.openingAt <= nowInSeconds && exam.status !== "Closed",
+          isAvailable:
+            exam.openingAt <= nowInSeconds && exam.status !== "Closed",
           durationMinutes: exam.durationMinutes,
           numOfQuestion: exam.numOfQuestion,
         };
@@ -306,11 +319,21 @@ export const getGroupDetails = async (req, res, next) => {
       });
     }
 
-    const teacherId = req.user.id;
-    const group = await Group.findOne({
-      _id: groupId,
-      teacher: teacherId,
-    }).populate("students", "name email avatar createdAt").populate("pendingStudents", "name email avatar createdAt");
+    const teacherId = req.user.id || req.user._id;
+    let groupQuery = { _id: groupId, teacher: teacherId };
+
+    if (userRole === "INSTITUTION_ADMIN") {
+      const orgId = req.user.organizationId?._id || req.user.organizationId;
+      groupQuery = {
+        _id: groupId,
+        $or: [{ organizationId: orgId }, { teacher: teacherId }],
+      };
+    }
+
+    const group = await Group.findOne(groupQuery)
+      .populate("teacher", "name email avatar customUsername")
+      .populate("students", "name email avatar createdAt")
+      .populate("pendingStudents", "name email avatar createdAt");
 
     if (!group) {
       return res.status(404).json({
@@ -326,46 +349,50 @@ export const getGroupDetails = async (req, res, next) => {
       exams.map(async (exam) => {
         const submissionsCount = await ExamAttemptModel.countDocuments({
           examID: exam._id,
-          studentID: { $in: studentIds },
-          endTime: { $exists: true, $ne: null }
         });
 
         return {
           id: exam._id,
           title: exam.title,
-          dueDate: new Date(exam.closingAt * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          dueDate: new Date(exam.closingAt * 1000).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
           status: exam.status,
           submissions: submissionsCount,
-          totalStudents: studentIds.length,
+          totalStudents: Math.max(1, studentIds.length),
         };
-      })
+      }),
     );
 
-    // Calculate group statistics
+    // Calculate group statistics across all attempts for this group's exams
     const attempts = await ExamAttemptModel.find({
       examID: { $in: exams.map((e) => e._id) },
-      studentID: { $in: studentIds },
-      endTime: { $exists: true, $ne: null }
     });
 
     let avgPerformance = 0;
     if (attempts.length > 0) {
       let totalScorePercentageSum = 0;
       for (const attempt of attempts) {
-        const exam = exams.find((e) => e._id.toString() === attempt.examID.toString());
-        const maxScore = exam ? exam.numOfQuestion : 10;
-        const scorePercentage = (attempt.totalScore / (maxScore || 10)) * 100;
+        const exam = exams.find(
+          (e) => e._id.toString() === attempt.examID.toString(),
+        );
+        const maxScore = exam?.numOfQuestion || 10;
+        const scorePercentage = ((attempt.totalScore || 0) / maxScore) * 100;
         totalScorePercentageSum += scorePercentage;
       }
       avgPerformance = Math.round(totalScorePercentageSum / attempts.length);
     }
 
-    const totalPossibleSubmissions = studentIds.length * exams.length;
+    const totalStudentsCount = Math.max(1, studentIds.length);
+    const totalPossibleSubmissions = totalStudentsCount * exams.length;
     const totalSubmissions = attempts.length;
-    const completionRate = totalPossibleSubmissions > 0
-      ? Math.round((totalSubmissions / totalPossibleSubmissions) * 100)
-      : 0;
-    const pendingSubmissions = totalPossibleSubmissions - totalSubmissions;
+    const completionRate =
+      totalPossibleSubmissions > 0
+        ? Math.round((totalSubmissions / totalPossibleSubmissions) * 100)
+        : 0;
+    const pendingSubmissions = Math.max(0, totalPossibleSubmissions - totalSubmissions);
 
     // Calculate dynamic AI recommendations count
     let aiRecommendationsCount = 0;
@@ -374,11 +401,13 @@ export const getGroupDetails = async (req, res, next) => {
     }
     if (exams.length > 0 && attempts.length > 0) {
       exams.forEach((exam) => {
-        const examAttempts = attempts.filter((a) => a.examID.toString() === exam._id.toString());
+        const examAttempts = attempts.filter(
+          (a) => a.examID.toString() === exam._id.toString(),
+        );
         if (examAttempts.length > 0) {
           const totalScorePercent = examAttempts.reduce((sum, attempt) => {
             const maxScore = exam.numOfQuestion || 10;
-            return sum + (attempt.totalScore / maxScore) * 100;
+            return sum + ((attempt.totalScore || 0) / maxScore) * 100;
           }, 0);
           const avgScore = totalScorePercent / examAttempts.length;
           if (avgScore < 60) {
@@ -389,12 +418,16 @@ export const getGroupDetails = async (req, res, next) => {
     }
     if (studentIds.length > 0 && attempts.length > 0) {
       studentIds.forEach((studentId) => {
-        const studentAttempts = attempts.filter((a) => a.studentID.toString() === studentId.toString());
+        const studentAttempts = attempts.filter(
+          (a) => a.studentID.toString() === studentId.toString(),
+        );
         if (studentAttempts.length > 0) {
           const totalScorePercent = studentAttempts.reduce((sum, attempt) => {
-            const exam = exams.find((e) => e._id.toString() === attempt.examID.toString());
+            const exam = exams.find(
+              (e) => e._id.toString() === attempt.examID.toString(),
+            );
             const maxScore = exam ? exam.numOfQuestion : 10;
-            return sum + (attempt.totalScore / (maxScore || 10)) * 100;
+            return sum + ((attempt.totalScore || 0) / (maxScore || 10)) * 100;
           }, 0);
           const avgScore = totalScorePercent / studentAttempts.length;
           if (avgScore < 60) {
@@ -404,10 +437,14 @@ export const getGroupDetails = async (req, res, next) => {
       });
     }
     exams.forEach((exam) => {
-      const isClosingSoon = exam.closingAt - nowInSeconds > 0 && exam.closingAt - nowInSeconds < 2 * 24 * 60 * 60;
+      const isClosingSoon =
+        exam.closingAt - nowInSeconds > 0 &&
+        exam.closingAt - nowInSeconds < 2 * 24 * 60 * 60;
       if (isClosingSoon) {
-        const examSubmissions = attempts.filter((a) => a.examID.toString() === exam._id.toString()).length;
-        if (examSubmissions < studentIds.length) {
+        const examSubmissions = attempts.filter(
+          (a) => a.examID.toString() === exam._id.toString(),
+        ).length;
+        if (examSubmissions < totalStudentsCount) {
           aiRecommendationsCount += 1;
         }
       }
@@ -430,15 +467,15 @@ export const getGroupDetails = async (req, res, next) => {
           completionRate,
           pendingSubmissions: pendingSubmissions > 0 ? pendingSubmissions : 0,
           aiRecommendationsCount,
-        }
+        },
       },
     });
-  } catch (error) {      
+  } catch (error) {
     next(error);
   }
-};                      
+};
 export const removeStudentFromGroup = async (req, res, next) => {
-  try {                   
+  try {
     const { groupId, studentId } = req.params;
     const teacherId = req.user.id;
 
@@ -446,12 +483,12 @@ export const removeStudentFromGroup = async (req, res, next) => {
     if (!group) return next(new Error("Group Not Found"));
 
     const isStudent = group.students.some(
-      (id) => id.toString() === studentId.toString()
+      (id) => id.toString() === studentId.toString(),
     );
     if (!isStudent) return next(new Error("Student Not Found In This Group"));
 
     group.students = group.students.filter(
-      (id) => id.toString() !== studentId.toString()
+      (id) => id.toString() !== studentId.toString(),
     );
     await group.save();
 
@@ -493,8 +530,12 @@ export const addStudentToGroupDetail = async (req, res, next) => {
     }
 
     // Remove from pending/rejected if they are there
-    group.pendingStudents = group.pendingStudents.filter((id) => id.toString() !== studentIdStr);
-    group.rejectedStudents = group.rejectedStudents.filter((id) => id.toString() !== studentIdStr);
+    group.pendingStudents = group.pendingStudents.filter(
+      (id) => id.toString() !== studentIdStr,
+    );
+    group.rejectedStudents = group.rejectedStudents.filter(
+      (id) => id.toString() !== studentIdStr,
+    );
 
     group.students.push(student._id);
     await group.save();
@@ -519,7 +560,10 @@ export const deleteGroup = async (req, res, next) => {
     const { groupId } = req.params;
     const teacherId = req.user.id;
 
-    const group = await Group.findOneAndDelete({ _id: groupId, teacher: teacherId });
+    const group = await Group.findOneAndDelete({
+      _id: groupId,
+      teacher: teacherId,
+    });
     if (!group) return next(new Error("Group Not Found"));
 
     return successResponse({

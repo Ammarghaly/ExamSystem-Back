@@ -1,4 +1,4 @@
-import mongoose, { Schema } from "mongoose"
+import mongoose, { Schema } from "mongoose";
 
 const ExamSchema = new Schema(
   {
@@ -33,10 +33,17 @@ const ExamSchema = new Schema(
       ref: "User",
       required: true,
     },
-    groupID: [{
+    organizationId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Group",
-    }],
+      ref: "Organization",
+      default: null,
+    },
+    groupID: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Group",
+      },
+    ],
     parentExamID: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Exam",
@@ -59,6 +66,6 @@ const ExamSchema = new Schema(
   },
 );
 
-const ExamModel = mongoose.models.Exam || mongoose.model("Exam", ExamSchema)
+const ExamModel = mongoose.models.Exam || mongoose.model("Exam", ExamSchema);
 
-export default ExamModel
+export default ExamModel;

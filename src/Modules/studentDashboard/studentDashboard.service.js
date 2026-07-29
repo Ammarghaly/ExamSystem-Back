@@ -67,7 +67,7 @@ export const getStudentDashboard = async (req, res, next) => {
             return notCompleted && notExpired;
         })
         .map((exam) => {
-            // حساب الـ due time
+            // Calculate due time
             const secondsLeft = exam.closingAt - nowInSeconds;
             const daysLeft = Math.ceil(secondsLeft / (60 * 60 * 24));
 

@@ -73,6 +73,14 @@ export const deleteQuestion = async (req, res, next) => {
   if (!question) {
     return next(new Error("Question Not Found"));
   }
+
+  if (question.examID) {
+    const remainingCount = await QuestionModel.countDocuments({ examID: question.examID });
+    await ExamModel.findByIdAndUpdate(question.examID, {
+      numOfQuestion: remainingCount,
+    });
+  }
+
   return successResponse({
     res,
     success: true,

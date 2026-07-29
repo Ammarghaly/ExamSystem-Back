@@ -11,6 +11,7 @@ import uploadToCloudinary from "../../Utlis/cloudinary.utlis.js";
 import { checkCertificateWithAI } from "../../Utlis/checkCertificateWithAI.utlis.js";
 import { sendEmail } from "../../Utlis/sendEmail.js";
 import { RandomString } from "../../Utlis/generateOtp.js";
+import { setupInstitutionForUser } from "../../Utlis/institution.utlis.js";
 
 export const signUp = async (req, res, next) => {
   const { role, name, email, password, subjects_taught, educational_level } =
@@ -98,6 +99,12 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    if (user.isActive === false) {
+      return res.status(403).json({
+        message: "Your account has been disabled. Contact your administrator.",
+      });
+    }
+
     if (!user.otp || !user.otp.verified) {
       return res.status(403).json({
         message: "Please verify your email first",
@@ -106,10 +113,38 @@ export const login = async (req, res, next) => {
       });
     }
 
+    if (
+      user.subscription_type === "institution" &&
+      user.role !== "INSTITUTION_MEMBER" &&
+      (!user.organizationId || user.role !== "INSTITUTION_ADMIN")
+    ) {
+      const OrganizationModel = (
+        await import("../../DB/model/organization.model.js")
+      ).default;
+      let org = await OrganizationModel.findOne({ ownerId: user._id });
+      if (!org) {
+        const cleanDomain = (user.email.split("@")[0] || "org")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+        org = await OrganizationModel.create({
+          name: `${user.name}'s Organization`,
+          ownerId: user._id,
+          domain: cleanDomain,
+          totalCredits: 10000,
+          usedCredits: 0,
+        });
+      }
+      user.role = "INSTITUTION_ADMIN";
+      user.organizationId = org._id;
+      await user.save();
+    }
+
     const token = signToken({
       payload: {
         id: user._id,
         email: user.email,
+        role: user.role,
+        organizationId: user.organizationId || null,
       },
     });
 
@@ -146,6 +181,9 @@ export const login = async (req, res, next) => {
         subscription_credits: user.subscription_credits,
         purchased_credits: user.purchased_credits,
         role: user.role,
+        organizationId: user.organizationId || null,
+        customUsername: user.customUsername || null,
+        isActive: user.isActive,
       },
       token,
     });

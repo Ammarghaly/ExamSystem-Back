@@ -24,6 +24,12 @@ const GroupSchema = new Schema(
       required: true,
     },
 
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+    },
+
     students: [
       {
         type: mongoose.Schema.Types.ObjectId,
