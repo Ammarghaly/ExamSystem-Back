@@ -1,5 +1,4 @@
-import dotenv from "dotenv";
-dotenv.config({ path: "./src/config/.env" });
+import "./src/config/env.js";
 
 import express from "express";
 import http from "http";
@@ -15,7 +14,7 @@ const server = http.createServer(app);
 
 initializeSocket(server);
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3900;
 
 server.listen(port, () => {
   console.log(`Server running on ${port}`);

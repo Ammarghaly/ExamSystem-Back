@@ -16,6 +16,7 @@ export const signUpValidation = Joi.object({
 
 export const sendOtpSchema = Joi.object({
   email: Joi.string().email().required(),
+  purpose: Joi.string().valid("verify", "reset").optional(),
 });
 
 export const verifyOtpSchema = Joi.object({

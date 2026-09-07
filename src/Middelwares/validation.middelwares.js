@@ -3,7 +3,7 @@ export const validation = (schema) => {
         if (!schema) return next();
 
         if (typeof schema.validate === 'function') {
-            const validationResults = schema.validate(req.body, { aboortEarly: false });
+            const validationResults = schema.validate(req.body, { abortEarly: false });
             if (validationResults.error) {
                 return res.status(400).json({
                     message: "Validation Error",
@@ -16,7 +16,7 @@ export const validation = (schema) => {
         const targets = ['body', 'params', 'query'];
         for (const target of targets) {
             if (schema[target] && typeof schema[target].validate === 'function') {
-                const validationResults = schema[target].validate(req[target] || {}, { aboortEarly: false });
+                const validationResults = schema[target].validate(req[target] || {}, { abortEarly: false });
                 if (validationResults.error) {
                     return res.status(400).json({
                         message: `Validation Error in ${target}`,
